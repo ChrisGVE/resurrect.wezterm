@@ -46,12 +46,16 @@ pub.save_state_dir = plugin_dir .. separator .. pub.get_require_path() .. separa
 ---Changes the directory to save the state to
 ---@param directory string
 function pub.change_state_save_dir(directory)
-	pub.save_state_dir = directory
+	pub.save_state_dir = string.gsub(
+		string.gsub(directory, "%s+", ""), -- trim any trailing space
+		"[\\/]$",
+		""
+	) -- remove any trailing \ or /
+	print(pub.save_state_dir)
 	-- ensure that subfolders exist
-	dirname = pub.save_state_dir .. separator .. "state"
-	os.execute("mkdir -p " .. dirname .. separator .. "tab")
-	os.execute("mkdir -p " .. dirname .. separator .. "window")
-	os.execute("mkdir -p " .. dirname .. separator .. "workspace")
+	os.execute("mkdir -p " .. directory .. separator .. "tab")
+	os.execute("mkdir -p " .. directory .. separator .. "window")
+	os.execute("mkdir -p " .. directory .. separator .. "workspace")
 end
 
 ---@param file_name string
