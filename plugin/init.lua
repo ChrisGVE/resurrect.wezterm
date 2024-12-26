@@ -49,13 +49,19 @@ function pub.change_state_save_dir(directory)
 	pub.save_state_dir = string.gsub(
 		string.gsub(directory, "%s+", ""), -- trim any trailing space
 		"[\\/]$",
-		""
-	) -- remove any trailing \ or /
-	print(pub.save_state_dir)
+		"" -- remove any trailing \ or /
+	) .. separator -- add a trailing separator
 	-- ensure that subfolders exist
-	os.execute("mkdir -p " .. directory .. separator .. "tab")
-	os.execute("mkdir -p " .. directory .. separator .. "window")
-	os.execute("mkdir -p " .. directory .. separator .. "workspace")
+
+	if is_windows then
+		os.execute("mkdir " .. pub.save_state_dir .. "tab")
+		os.execute("mkdir " .. pub.save_state_dir .. "window")
+		os.execute("mkdir " .. pub.save_state_dir .. "workspace")
+	else
+		os.execute("mkdir -p " .. pub.save_state_dir .. "tab")
+		os.execute("mkdir -p " .. pub.save_state_dir .. "window")
+		os.execute("mkdir -p " .. pub.save_state_dir .. "workspace")
+	end
 end
 
 ---@param file_name string
@@ -335,22 +341,28 @@ function pub.get_default_fuzzy_load_opts()
 		ignore_workspaces = false,
 		ignore_windows = false,
 		ignore_tabs = false,
-		fmt_workspace = function(label)
+		fmt_workspace = function(label, date)
 			return wezterm.format({
 				{ Foreground = { AnsiColor = "Green" } },
-				{ Text = "󱂬 : " .. label:gsub("%.json$", "") },
+				{ Text = "󱂬 : " .. label:gsub("%.json", "") .. " " },
+				{ Foreground = { AnsiColor = "White" } },
+				{ Text = date },
 			})
 		end,
-		fmt_window = function(label)
+		fmt_window = function(label, date)
 			return wezterm.format({
 				{ Foreground = { AnsiColor = "Yellow" } },
-				{ Text = " : " .. label:gsub("%.json$", "") },
+				{ Text = " : " .. label:gsub("%.json", "") .. " " },
+				{ Foreground = { AnsiColor = "White" } },
+				{ Text = date },
 			})
 		end,
-		fmt_tab = function(label)
+		fmt_tab = function(label, date)
 			return wezterm.format({
 				{ Foreground = { AnsiColor = "Red" } },
-				{ Text = "󰓩 : " .. label:gsub("%.json$", "") },
+				{ Text = "󰓩 : " .. label:gsub("%.json", "") .. " " },
+				{ Foreground = { AnsiColor = "White" } },
+				{ Text = date },
 			})
 		end,
 	}
@@ -364,6 +376,7 @@ end
 function pub.fuzzy_load(window, pane, callback, opts)
 	wezterm.emit("resurrect.fuzzy_load.start", window, pane)
 	local state_files = {}
+	local state_fmted_files = {}
 
 	if opts == nil then
 		opts = pub.get_default_fuzzy_load_opts()
@@ -377,30 +390,102 @@ function pub.fuzzy_load(window, pane, callback, opts)
 		end
 	end
 
-	local function insert_choices(type, fmt)
-		for _, file in ipairs(wezterm.glob("*", pub.save_state_dir .. "/" .. type)) do
-			local label
-			local id = type .. "/" .. file
+	local function file_datetime(folder, file)
+		-- Month names
+		local months = {
+			"Jan",
+			"Feb",
+			"Mar",
+			"Apr",
+			"May",
+			"Jun",
+			"Jul",
+			"Aug",
+			"Sep",
+			"Oct",
+			"Nov",
+			"Dec",
+		}
+		local result = ""
+		if is_windows then
+			local handle = io.popen("wmic datafile where name='" .. folder .. separator .. file("' get LastModified"))
+			if handle then
+				local stdout = handle:read("*a")
+				handle:close()
 
-			if fmt then
-				label = fmt(file)
-			else
-				label = file
+				-- Convert the date format into "dd-mmm-yyyy HH:MM"
+
+				local year = stdout:sub(1, 4)
+				local month = stdout:sub(5, 6)
+				local day = stdout:sub(7, 8)
+				local hour = stdout:sub(9, 10)
+				local minute = stdout:sub(11, 12)
+
+				-- Format into "dd-mmm-yyyy hh:mm"
+				result = string.format(
+					"%02d-%s-%04d %02d:%02d",
+					tonumber(day),
+					months[tonumber(month)],
+					tonumber(year),
+					tonumber(hour),
+					tonumber(minute)
+				)
 			end
-			table.insert(state_files, { id = id, label = label })
+		else
+			local handle = io.popen("date -r '" .. folder .. "' +'%d-%b-%Y %H:%M'")
+			if handle then
+				result = handle:read("*a")
+				handle:close()
+			end
+		end
+		return result
+	end
+
+	local function insert_choices(type)
+		local folder = pub.save_state_dir .. separator .. type
+		for _, file in ipairs(wezterm.glob("*", folder)) do
+			local id = type .. "/" .. file
+			local date = file_datetime(folder, file)
+
+			table.insert(state_files, { id = id, file = file, date = date, type = type })
 		end
 	end
 
 	if not opts.ignore_workspaces then
-		insert_choices("workspace", opts.fmt_workspace)
+		insert_choices("workspace") --, opts.fmt_workspace)
 	end
 
 	if not opts.ignore_windows then
-		insert_choices("window", opts.fmt_window)
+		insert_choices("window") --, opts.fmt_window)
 	end
 
 	if not opts.ignore_tabs then
-		insert_choices("tab", opts.fmt_tab)
+		insert_choices("tab") --, opts.fmt_tab)
+	end
+
+	-- look for the longest file name in the list
+	local max_length = 0
+	for _, items in ipairs(state_files) do
+		max_length = math.max(max_length, items["file"]:len())
+	end
+
+	-- build the final list
+	for _, items in ipairs(state_files) do
+		local label = ""
+		if items["file"]:len() == max_length then
+			label = items["file"]
+		else
+			local padding = max_length - items["file"]:len()
+			label = items["file"] .. " " .. string.rep(".", padding - 1)
+		end
+		if items["type"] == "workspace" then
+			label = opts.fmt_workspace(label, items["date"]) or label
+		elseif items[type] == "window" then
+			label = opts.fmt_window(label, items["date"]) or label
+		else
+			label = opts.fmt_tab(label, items["date"]) or label
+		end
+		table.insert(state_fmted_files, { id = items.id, label = label })
 	end
 
 	window:perform_action(
@@ -414,7 +499,7 @@ function pub.fuzzy_load(window, pane, callback, opts)
 			title = opts.title,
 			description = opts.description,
 			fuzzy_description = opts.fuzzy_description,
-			choices = state_files,
+			choices = state_fmted_files,
 			fuzzy = opts.is_fuzzy,
 		}),
 		pane
