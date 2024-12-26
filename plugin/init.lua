@@ -47,6 +47,11 @@ pub.save_state_dir = plugin_dir .. separator .. pub.get_require_path() .. separa
 ---@param directory string
 function pub.change_state_save_dir(directory)
 	pub.save_state_dir = directory
+	-- ensure that subfolders exist
+	dirname = pub.save_state_dir .. separator .. "state"
+	os.execute("mkdir -p " .. dirname .. separator .. "tab")
+	os.execute("mkdir -p " .. dirname .. separator .. "window")
+	os.execute("mkdir -p " .. dirname .. separator .. "workspace")
 end
 
 ---@param file_name string
