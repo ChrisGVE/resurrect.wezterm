@@ -409,7 +409,7 @@ function pub.fuzzy_load(window, pane, callback, opts)
 		}
 		local result = ""
 		if is_windows then
-			local handle = io.popen("wmic datafile where name='" .. folder .. separator .. file("' get LastModified"))
+			local handle = io.popen("wmic datafile where name='" .. folder .. separator .. file .. "' get LastModified")
 			if handle then
 				local stdout = handle:read("*a")
 				handle:close()
