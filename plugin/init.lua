@@ -1,4 +1,4 @@
-local wezterm = require("wezterm")
+local wezterm = require("wezterm") --[[@as Wezterm]] --- this type cast invokes the LSP module for Wezterm
 
 ---@class init_module
 ---@field encryption encryption_opts
@@ -8,6 +8,7 @@ local plugin_dir
 
 --- checks if the user is on windows
 local is_windows = wezterm.target_triple == "x86_64-pc-windows-msvc"
+local is_mac = (wezterm.target_triple == "x86_64-apple-darwin" or wezterm.target_triple == "aarch64-apple-darwin")
 local separator = is_windows and "\\" or "/"
 
 --- Checks if the plugin directory exists
@@ -342,29 +343,52 @@ function pub.get_default_fuzzy_load_opts()
 		ignore_workspaces = false,
 		ignore_windows = false,
 		ignore_tabs = false,
-		fmt_workspace = function(label, date)
-			return wezterm.format({
-				{ Foreground = { AnsiColor = "Green" } },
-				{ Text = "󱂬 : " .. label:gsub("%.json", "") .. " " },
-				{ Foreground = { AnsiColor = "White" } },
-				{ Text = date },
-			})
+		date_format = "%d-%m-%Y %H:%M:%S",
+		show_state_with_date = false,
+		fmt_workspace = function(label, date, opts)
+			if opts.show_state_with_date then
+				return wezterm.format({
+					{ Foreground = { AnsiColor = "Green" } },
+					{ Text = "󱂬 : " .. label:gsub("%.json", "") .. " " },
+					{ Foreground = { AnsiColor = "White" } },
+					{ Text = date },
+				})
+			else
+				return wezterm.format({
+					{ Foreground = { AnsiColor = "Green" } },
+					{ Text = "󱂬 : " .. label:gsub("%.json", "") },
+				})
+			end
 		end,
-		fmt_window = function(label, date)
-			return wezterm.format({
-				{ Foreground = { AnsiColor = "Yellow" } },
-				{ Text = " : " .. label:gsub("%.json", "") .. " " },
-				{ Foreground = { AnsiColor = "White" } },
-				{ Text = date },
-			})
+		fmt_window = function(label, date, show_state_with_date, opts)
+			if opts.show_state_with_date then
+				return wezterm.format({
+					{ Foreground = { AnsiColor = "Yellow" } },
+					{ Text = " : " .. label:gsub("%.json", "") .. " " },
+					{ Foreground = { AnsiColor = "White" } },
+					{ Text = date },
+				})
+			else
+				return wezterm.format({
+					{ Foreground = { AnsiColor = "Yellow" } },
+					{ Text = " : " .. label:gsub("%.json", "") },
+				})
+			end
 		end,
-		fmt_tab = function(label, date)
-			return wezterm.format({
-				{ Foreground = { AnsiColor = "Red" } },
-				{ Text = "󰓩 : " .. label:gsub("%.json", "") .. " " },
-				{ Foreground = { AnsiColor = "White" } },
-				{ Text = date },
-			})
+		fmt_tab = function(label, date, opts)
+			if opts.show_state_with_date then
+				return wezterm.format({
+					{ Foreground = { AnsiColor = "Red" } },
+					{ Text = "󰓩 : " .. label:gsub("%.json", "") .. " " },
+					{ Foreground = { AnsiColor = "White" } },
+					{ Text = date },
+				})
+			else
+				return wezterm.format({
+					{ Foreground = { AnsiColor = "Red" } },
+					{ Text = "󰓩 : " .. label:gsub("%.json", "") },
+				})
+			end
 		end,
 	}
 end
@@ -390,65 +414,51 @@ function pub.fuzzy_load(window, pane, callback, opts)
 			end
 		end
 	end
+	print(opts)
 
-	local function file_datetime(folder, file)
-		-- Month names
-		local months = {
-			"Jan",
-			"Feb",
-			"Mar",
-			"Apr",
-			"May",
-			"Jun",
-			"Jul",
-			"Aug",
-			"Sep",
-			"Oct",
-			"Nov",
-			"Dec",
-		}
-		local result = ""
-		if is_windows then
-			local handle = io.popen("wmic datafile where name='" .. folder .. separator .. file .. "' get LastModified")
-			if handle then
-				local stdout = handle:read("*a")
-				handle:close()
-
-				-- Convert the date format into "dd-mmm-yyyy HH:MM"
-
-				local year = stdout:sub(1, 4)
-				local month = stdout:sub(5, 6)
-				local day = stdout:sub(7, 8)
-				local hour = stdout:sub(9, 10)
-				local minute = stdout:sub(11, 12)
-
-				-- Format into "dd-mmm-yyyy hh:mm"
-				result = string.format(
-					"%02d-%s-%04d %02d:%02d",
-					tonumber(day),
-					months[tonumber(month)],
-					tonumber(year),
-					tonumber(hour),
-					tonumber(minute)
-				)
-			end
-		else
-			local handle = io.popen("date -r '" .. folder .. separator .. file .. "' +'%d-%b-%Y %H:%M'")
-			if handle then
-				result = handle:read("*a")
-				handle:close()
-			end
-		end
-		return result
-	end
+	local max_length = 0
 
 	local function insert_choices(type)
-		local folder = pub.save_state_dir .. separator .. type
-		for _, file in ipairs(wezterm.glob("*", folder)) do
-			local id = type .. "/" .. file
-			local date = file_datetime(folder, file)
+		local folder = pub.save_state_dir .. type
 
-			table.insert(state_files, { id = id, file = file, date = date, type = type })
+		-- Command-line recipe based on OS
+		local cmd
+		if is_windows then
+			cmd = "powershell -Command \"Get-ChildItem -Path '"
+				.. folder
+				.. '\' | ForEach-Object { "$($_.LastWriteTime.ToFileTimeUtc()) $($_.Name)" }"'
+		elseif is_mac then
+			cmd = 'stat -f "%m %N" ' .. folder .. "/*"
+		else
+			cmd = 'ls -l --time-style=+"%s" ' .. folder .. " | awk '{print $6,$7,$9}'"
+		end
+
+		-- Execute the command and capture stdout
+		local handle = io.popen(cmd)
+		if not handle then
+			return -- Return an empty table if the command fails
+		end
+
+		local stdout = handle:read("*a")
+		handle:close()
+
+		if not stdout or stdout == "" then
+			return {} -- Return an empty table if no output is returned
+		end
+
+		-- Parse the stdout and construct the table
+		for line in stdout:gmatch("[^\n]+") do
+			local epoch, file = line:match("(%d+)%s+(.+)")
+			if epoch and file then
+				local formatted_date = os.date(opts.date_format, tonumber(epoch))
+				max_length = math.max(max_length, file:len())
+				table.insert(state_files, {
+					id = type .. "/" .. file,
+					file = file,
+					date = formatted_date,
+					type = type,
+				})
+			end
 		end
 	end
 
@@ -464,12 +474,6 @@ function pub.fuzzy_load(window, pane, callback, opts)
 		insert_choices("tab")
 	end
 
-	-- look for the longest file name in the list
-	local max_length = 0
-	for _, items in ipairs(state_files) do
-		max_length = math.max(max_length, items["file"]:len())
-	end
-
 	-- build the final list
 	for _, items in ipairs(state_files) do
 		local label = ""
@@ -477,14 +481,18 @@ function pub.fuzzy_load(window, pane, callback, opts)
 			label = items["file"]
 		else
 			local padding = max_length - items["file"]:len()
-			label = items["file"] .. " " .. string.rep(".", padding - 1)
+			if opts.show_state_with_date then
+				label = items["file"] .. " " .. string.rep(".", padding - 1)
+			else
+				label = items["file"]
+			end
 		end
 		if items["type"] == "workspace" then
-			label = opts.fmt_workspace(label, items["date"]) or label
+			label = opts.fmt_workspace(label, items["date"], opts) or label
 		elseif items[type] == "window" then
-			label = opts.fmt_window(label, items["date"]) or label
+			label = opts.fmt_window(label, items["date"], opts) or label
 		else
-			label = opts.fmt_tab(label, items["date"]) or label
+			label = opts.fmt_tab(label, items["date"], opts) or label
 		end
 		table.insert(state_fmted_files, { id = items.id, label = label })
 	end
