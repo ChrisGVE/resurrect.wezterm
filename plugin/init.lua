@@ -453,7 +453,7 @@ function pub.fuzzy_load(window, pane, callback, opts)
 	end
 
 	if not opts.ignore_workspaces then
-		insert_choices("workspace") --, opts.fmt_workspace)
+		insert_choices("workspace")
 	end
 
 	if not opts.ignore_windows then
