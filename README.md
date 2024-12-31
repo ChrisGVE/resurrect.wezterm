@@ -87,7 +87,11 @@ config.keys = {
           local state = resurrect.load_state(id, "tab")
           resurrect.tab_state.restore_tab(pane:tab(), state, opts)
         end
-      end)
+      end,
+        { -- optional part (* see explanations in fuzzy_load opts)
+          show_state_with_date = true,
+          date_format = "%d-%b-%Y %H:%M",
+        })
     end),
   },
 }
@@ -143,7 +147,7 @@ resurrect.set_encryption({
       pub.encryption.public_key,
       file_path:gsub(" ", "\\ ")
     )
-    
+
     local success, output = execute_cmd_with_stdin(cmd, lines)
     if not success then
       error("Encryption failed:" .. output)
@@ -152,12 +156,12 @@ resurrect.set_encryption({
   decrypt = function(file_path)
     -- substitute for your decryption command
     local cmd = { pub.encryption.method, "-d", "-i", pub.encryption.private_key, file_path }
-    
+
     local success, stdout, stderr = wezterm.run_child_process(cmd)
     if not success then
       error("Decryption failed: " .. stderr)
     end
-    
+
     return stdout
   end,
 })
@@ -178,7 +182,7 @@ I have added the following to my configuration to be able to do this whenever I 
 -- loads the state whenever I create a new workspace
 wezterm.on("smart_workspace_switcher.workspace_switcher.created", function(window, path, label)
   local workspace_state = resurrect.workspace_state
-  
+
   workspace_state.restore_workspace(resurrect.load_state(label, "workspace"), {
     window = window,
     relative = true,
@@ -229,16 +233,18 @@ which has the following types:
 
 ```lua
 ---@alias fmt_fun fun(label: string): string
----@alias fuzzy_load_opts {title: string, description: string, fuzzy_description: string, is_fuzzy: boolean, ignore_workspaces: boolean, ignore_tabs: boolean, ignore_windows: boolean, fmt_window: fmt_fun, fmt_workspace: fmt_fun, fmt_tab: fmt_fun }
+---@alias fuzzy_load_opts {title: string, description: string, fuzzy_description: string, is_fuzzy: boolean, ignore_workspaces: boolean, ignore_tabs: boolean, ignore_windows: boolean, date_format: string, show_state_with_date: boolean, fmt_window: fmt_fun, fmt_workspace: fmt_fun, fmt_tab: fmt_fun }
 ```
 
-This is used to format labels, ignore saved state, change the title and change the behaviour of the fuzzy finder.
+This is used to format labels, ignore saved state, change the title and change the behaviour of the fuzzy finder. The option `show_state_with_date`, by default `false`, is used such that the date/time of the last change of the state file can be shown in the list. Additionally `date_format`, by default `%d-%m-%Y %H:%M:%S`, is used to format the date if shown, the format follows [`strftime`](https://strftime.org).
 
 ### Change the directory to store the saved state
 
 ```lua
 resurrect.change_state_save_dir("/some/other/directory")
 ```
+
+When changing the directory, resurrect will create the necessary subfolders _workspace_, _window_, and _tab_ if they don't exist already.
 
 > [!WARNING]
 > FOR WINDOWS USERS
