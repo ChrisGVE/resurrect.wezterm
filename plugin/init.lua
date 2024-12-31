@@ -433,7 +433,7 @@ function pub.fuzzy_load(window, pane, callback, opts)
 				)
 			end
 		else
-			local handle = io.popen("date -r '" .. folder .. "' +'%d-%b-%Y %H:%M'")
+			local handle = io.popen("date -r '" .. folder .. seperator .. file .. "' +'%d-%b-%Y %H:%M'")
 			if handle then
 				result = handle:read("*a")
 				handle:close()
