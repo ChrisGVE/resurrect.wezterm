@@ -457,7 +457,7 @@ function pub.fuzzy_load(window, pane, callback, opts)
 	end
 
 	if not opts.ignore_windows then
-		insert_choices("window") --, opts.fmt_window)
+		insert_choices("window")
 	end
 
 	if not opts.ignore_tabs then
