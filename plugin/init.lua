@@ -461,7 +461,7 @@ function pub.fuzzy_load(window, pane, callback, opts)
 	end
 
 	if not opts.ignore_tabs then
-		insert_choices("tab") --, opts.fmt_tab)
+		insert_choices("tab")
 	end
 
 	-- look for the longest file name in the list
