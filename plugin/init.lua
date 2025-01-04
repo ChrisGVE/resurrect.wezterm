@@ -414,7 +414,6 @@ function pub.fuzzy_load(window, pane, callback, opts)
 			end
 		end
 	end
-	print(opts)
 
 	local max_length = 0
 
