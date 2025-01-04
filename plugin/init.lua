@@ -435,7 +435,8 @@ function pub.fuzzy_load(window, pane, callback, opts)
 		-- Execute the command and capture stdout
 		local handle = io.popen(cmd)
 		if not handle then
-			return -- Return an empty table if the command fails
+      wezterm.emit("resurrect.error", "Could not open process: " .. cmd)
+			return {} -- Return an empty table if the command fails
 		end
 
 		local stdout = handle:read("*a")
