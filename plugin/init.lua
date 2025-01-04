@@ -443,6 +443,7 @@ function pub.fuzzy_load(window, pane, callback, opts)
 		handle:close()
 
 		if not stdout or stdout == "" then
+      wezterm.emit("resurrect.error", "No output when running: " .. cmd)
 			return {} -- Return an empty table if no output is returned
 		end
 
