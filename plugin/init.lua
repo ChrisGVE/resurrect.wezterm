@@ -79,8 +79,7 @@ end
 ---executes cmd and passes input to stdin
 ---@param cmd string command to be run
 ---@param input string input to stdin
----@return boolean
----@return string
+---@return boolean, string
 local function execute_cmd_with_stdin(cmd, input)
 	if is_windows and #input < 32000 then -- Check if input is larger than max cmd length on Windows
 		cmd = string.format("%s | %s", wezterm.shell_join_args({ "Write-Output", "-NoEnumerate", input }), cmd)
@@ -435,7 +434,7 @@ function pub.fuzzy_load(window, pane, callback, opts)
 		-- Execute the command and capture stdout
 		local handle = io.popen(cmd)
 		if not handle then
-      wezterm.emit("resurrect.error", "Could not open process: " .. cmd)
+			wezterm.emit("resurrect.error", "Could not open process: " .. cmd)
 			return {} -- Return an empty table if the command fails
 		end
 
@@ -443,7 +442,7 @@ function pub.fuzzy_load(window, pane, callback, opts)
 		handle:close()
 
 		if not stdout or stdout == "" then
-      wezterm.emit("resurrect.error", "No output when running: " .. cmd)
+			wezterm.emit("resurrect.error", "No output when running: " .. cmd)
 			return {} -- Return an empty table if no output is returned
 		end
 
@@ -451,11 +450,12 @@ function pub.fuzzy_load(window, pane, callback, opts)
 		for line in stdout:gmatch("[^\n]+") do
 			local epoch, file = line:match("(%d+)%s+(.+)")
 			if epoch and file then
+				local filename, _ = file:match("^.*" .. separator .. "(.+)%.(.*)$")
 				local formatted_date = os.date(opts.date_format, tonumber(epoch))
-				max_length = math.max(max_length, file:len())
+				max_length = math.max(max_length, filename:len())
 				table.insert(state_files, {
 					id = type .. "/" .. file,
-					file = file,
+					file = filename,
 					date = formatted_date,
 					type = type,
 				})
